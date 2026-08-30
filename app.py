@@ -5,10 +5,14 @@ import math
 import time
 import av
 
-# MediaPipe স্ট্যান্ডার্ড ইমপোর্ট (লাল দাগ দূর করার জন্য)
-import mediapipe as mp
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
+# MediaPipe safe import
+try:
+    import mediapipe as mp
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
+except Exception:
+    import mediapipe.python.solutions.pose as mp_pose
+    import mediapipe.python.solutions.drawing_utils as mp_drawing
 
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
 
