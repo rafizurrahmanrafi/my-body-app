@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: body-measurement-app
+    env: python
+    buildCommand: |
+      apt-get update && apt-get install -y ffmpeg libgl1-mesa-glx libglib2.0-0
+      pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0
