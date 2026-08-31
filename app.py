@@ -27,7 +27,12 @@ st.write(
     "তারপর নিচের বাটনে ক্লিক করে ২০ সেকেন্ড ঠায় দাঁড়িয়ে থাকুন — আমরা আপনার শার্টের মাপ বের করে দেব।"
 )
 
-
+st.info(
+    "📱 **মোবাইলে ব্যবহার করছেন?** মোবাইল ব্রাউজার শুধু **HTTPS** লিংকেই ক্যামেরা এক্সেস দেয় "
+    "(লোকাল কম্পিউটারে `http://localhost` দিয়ে টেস্ট করলে ভালো, কিন্তু ফোন থেকে সরাসরি IP/HTTP দিয়ে ঢুকলে ক্যামেরা কাজ করবে না)। "
+    "মোবাইল দিয়ে ব্যবহার করতে **Streamlit Community Cloud**-এ ফ্রি ডিপ্লয় করুন (নিচে README/ইনস্ট্রাকশনে বিস্তারিত আছে) — "
+    "সেটা নিজে থেকেই HTTPS লিংক দেয়, তখন যেকোনো মোবাইল ব্রাউজার থেকে সরাসরি ঢুকে ক্যামেরা ব্যবহার করা যাবে।"
+)
 
 with st.expander("📌 ভালো ফলাফলের জন্য কিছু টিপস (ক্লিক করে দেখুন)"):
     st.markdown(
@@ -88,12 +93,12 @@ class VideoProcessor:
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        pts = self.measurer.process_frame(img)
+        pts, raw_landmarks = self.measurer.process_frame(img)
 
         if self.measuring and pts is not None:
             self.frames_collected.append(pts)
 
-        annotated = self.measurer.draw(img, pts=pts)
+        annotated = self.measurer.draw(img, raw_landmarks=raw_landmarks)
         return av.VideoFrame.from_ndarray(annotated, format="bgr24")
 
 
