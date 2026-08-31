@@ -1,11 +1,14 @@
 """
 pose_measure.py
 ----------------
-mediapipe 1.0+ ভার্সনে পুরনো `mp.solutions.pose` API সম্পূর্ণ সরিয়ে ফেলা হয়েছে।
-তাই এখানে নতুন Tasks API (`PoseLandmarker`) ব্যবহার করা হয়েছে।
+MediaPipe Pose (classic `mp.solutions.pose` API) ব্যবহার করে শরীরের ল্যান্ডমার্ক
+ডিটেক্ট করা এবং সেখান থেকে শার্ট/টি-শার্টের মাপ বের করা হয়।
 
-এই API চালাতে একটা মডেল ফাইল (.task) লাগে, যেটা pip প্যাকেজের সাথে বান্ডিল করা থাকে না —
-প্রথমবার অ্যাপ চালু হলে সেটা অটোমেটিক্যালি ডাউনলোড হয়ে /tmp তে ক্যাশ হয়ে থাকে।
+নোট: mediapipe 1.0+ ভার্সনে নতুন একটা "Tasks API" (PoseLandmarker) এসেছে, কিন্তু
+সেটা এখনো নতুন এবং Streamlit Cloud-এর লিনাক্স কন্টেইনারে C-bindings লোড করতে গিয়ে
+সমস্যা করছে (দ্রুত পরিবর্তনশীল, এখনো পুরোপুরি স্টেবল না)। তাই এখানে ইচ্ছাকৃতভাবে
+mediapipe==0.10.14 (requirements.txt এ পিন করা) এবং তার পুরনো, বহু বছর ধরে
+প্রমাণিত `mp.solutions.pose` API ব্যবহার করা হয়েছে।
 
 গুরুত্বপূর্ণ নোট:
 - সাধারণ ওয়েবক্যাম থেকে depth information পাওয়া যায় না, তাই chest circumference
@@ -14,103 +17,53 @@ mediapipe 1.0+ ভার্সনে পুরনো `mp.solutions.pose` API স
 - shoulder width, length, sleeve length ভালো ক্যালিব্রেশনে মোটামুটি নির্ভুল হয়।
 """
 
-import os
-import time
-import tempfile
-import urllib.request
-
+import mediapipe as mp
 import numpy as np
 import cv2
-import mediapipe as mp
-from mediapipe.tasks.python import vision as mp_vision
-from mediapipe.tasks.python import BaseOptions
 
-# ছোট, দ্রুত মডেল — রিয়েল-টাইম ওয়েবক্যাম প্রসেসিং এর জন্য যথেষ্ট
-MODEL_URL = (
-    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
-    "pose_landmarker_lite/float16/latest/pose_landmarker_lite.task"
-)
-MODEL_PATH = os.path.join(tempfile.gettempdir(), "pose_landmarker_lite.task")
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
-# Pose landmark ইনডেক্স (mediapipe pose landmarker, ৩৩ পয়েন্ট মডেল)
+# MediaPipe Pose ল্যান্ডমার্ক ইনডেক্স
 L_SHOULDER, R_SHOULDER = 11, 12
 L_HIP, R_HIP = 23, 24
 L_WRIST, R_WRIST = 15, 16
 L_ANKLE, R_ANKLE = 27, 28
 L_EAR, R_EAR = 7, 8
 
-# স্কেলিটন লাইন আঁকার জন্য কানেকশন (মূল connection সেট, সরাসরি হার্ডকোড করা—
-# কারণ mp.solutions.pose.POSE_CONNECTIONS নতুন ভার্সনে আর নেই)
-POSE_CONNECTIONS = [
-    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16),
-    (11, 23), (12, 24), (23, 24),
-    (23, 25), (25, 27), (24, 26), (26, 28),
-    (27, 29), (29, 31), (28, 30), (30, 32),
-]
-
-
-def _ensure_model() -> str:
-    """মডেল ফাইল লোকালি না থাকলে একবার ডাউনলোড করে ক্যাশ করে রাখে।"""
-    if not os.path.exists(MODEL_PATH):
-        urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-    return MODEL_PATH
-
 
 class PoseMeasurer:
     def __init__(self, height_cm: float = 170.0):
         self.height_cm = height_cm
-        model_path = _ensure_model()
-
-        base_options = BaseOptions(model_asset_path=model_path)
-        options = mp_vision.PoseLandmarkerOptions(
-            base_options=base_options,
-            running_mode=mp_vision.RunningMode.VIDEO,
-            num_poses=1,
-            min_pose_detection_confidence=0.5,
+        self.pose = mp_pose.Pose(
+            static_image_mode=False,
+            model_complexity=1,
+            enable_segmentation=False,
+            min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
-        self.landmarker = mp_vision.PoseLandmarker.create_from_options(options)
-        self._last_ts_ms = 0
-
-    def _next_timestamp_ms(self) -> int:
-        # VIDEO mode-এ টাইমস্ট্যাম্প strictly বাড়তে হয়, তাই wall-clock ব্যবহার করা হচ্ছে
-        ts = int(time.time() * 1000)
-        if ts <= self._last_ts_ms:
-            ts = self._last_ts_ms + 1
-        self._last_ts_ms = ts
-        return ts
 
     def process_frame(self, img_bgr: np.ndarray):
-        """একটা ফ্রেম থেকে pose landmark বের করে dict আকারে রিটার্ন করে (pixel coords + visibility)."""
+        """একটা ফ্রেম থেকে pose landmark বের করে dict আকারে রিটার্ন করে (pixel coords + visibility)।
+        দ্বিতীয় রিটার্ন ভ্যালু raw mediapipe landmark অবজেক্ট, যেটা draw() এ স্কেলিটন আঁকতে লাগে।"""
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=img_rgb)
-        result = self.landmarker.detect_for_video(mp_image, self._next_timestamp_ms())
-
+        result = self.pose.process(img_rgb)
         if result.pose_landmarks:
             h, w, _ = img_bgr.shape
-            landmarks = result.pose_landmarks[0]  # প্রথম ডিটেক্ট হওয়া মানুষ
             pts = {}
-            for idx, lm in enumerate(landmarks):
-                vis = getattr(lm, "visibility", 1.0) or 1.0
-                pts[idx] = (lm.x * w, lm.y * h, vis)
-            return pts
-        return None
+            for idx, lm in enumerate(result.pose_landmarks.landmark):
+                pts[idx] = (lm.x * w, lm.y * h, lm.visibility)
+            return pts, result.pose_landmarks
+        return None, None
 
-    def draw(self, img_bgr: np.ndarray, pts=None) -> np.ndarray:
+    def draw(self, img_bgr: np.ndarray, raw_landmarks=None) -> np.ndarray:
         """স্ক্রিনে স্কেলিটন ওভারলে করে দেখানোর জন্য (ফিডব্যাক হিসেবে)।
-        pts আগে থেকে দিলে আবার নতুন করে detect করবে না (ডাবল কাজ এড়াতে)।"""
-        if pts is None:
-            pts = self.process_frame(img_bgr)
+        raw_landmarks আগে থেকে দিলে আবার নতুন করে detect করবে না (ডাবল কাজ এড়াতে)।"""
         annotated = img_bgr.copy()
-        if pts:
-            for a, b in POSE_CONNECTIONS:
-                if a in pts and b in pts:
-                    pa = (int(pts[a][0]), int(pts[a][1]))
-                    pb = (int(pts[b][0]), int(pts[b][1]))
-                    cv2.line(annotated, pa, pb, (0, 255, 0), 2)
-            for idx, (x, y, vis) in pts.items():
-                if vis > 0.5:
-                    cv2.circle(annotated, (int(x), int(y)), 3, (0, 140, 255), -1)
+        if raw_landmarks is None:
+            _, raw_landmarks = self.process_frame(img_bgr)
+        if raw_landmarks is not None:
+            mp_drawing.draw_landmarks(annotated, raw_landmarks, mp_pose.POSE_CONNECTIONS)
         return annotated
 
     @staticmethod
