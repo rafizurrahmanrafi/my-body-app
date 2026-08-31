@@ -93,18 +93,12 @@ class VideoProcessor:
 
     def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
-        pts, raw_landmarks = self.measurer.process_frame(img)
+        pts = self.measurer.process_frame(img)
 
         if self.measuring and pts is not None:
             self.frames_collected.append(pts)
 
-        annotated = img
-        if raw_landmarks is not None:
-            import mediapipe as mp
-
-            mp.solutions.drawing_utils.draw_landmarks(
-                annotated, raw_landmarks, mp.solutions.pose.POSE_CONNECTIONS
-            )
+        annotated = self.measurer.draw(img, pts=pts)
         return av.VideoFrame.from_ndarray(annotated, format="bgr24")
 
 
