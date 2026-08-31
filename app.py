@@ -1,11 +1,10 @@
 import streamlit as st
-import cv2
 import numpy as np
 import math
 import time
 import av
 
-# Safe MediaPipe Import
+# Import Mediapipe directly
 import mediapipe as mp
 mp_pose = mp.solutions.pose
 mp_drawing = mp.solutions.drawing_utils
