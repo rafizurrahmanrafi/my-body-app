@@ -5,9 +5,14 @@ import math
 import time
 import av
 
+# Safe MediaPipe Import for Streamlit Cloud
 import mediapipe as mp
-mp_pose = mp.solutions.pose
-mp_drawing = mp.solutions.drawing_utils
+try:
+    import mediapipe.python.solutions.pose as mp_pose
+    import mediapipe.python.solutions.drawing_utils as mp_drawing
+except ImportError:
+    mp_pose = mp.solutions.pose
+    mp_drawing = mp.solutions.drawing_utils
 
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
 
