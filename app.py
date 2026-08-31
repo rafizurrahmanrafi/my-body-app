@@ -5,15 +5,10 @@ import math
 import time
 import av
 
-# Robust MediaPipe Import Handling
+# Safe MediaPipe Import
 import mediapipe as mp
-
-if hasattr(mp, "solutions"):
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-else:
-    from mediapipe.python.solutions import pose as mp_pose
-    from mediapipe.python.solutions import drawing_utils as mp_drawing
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
 
 from streamlit_webrtc import webrtc_streamer, VideoProcessorBase, WebRtcMode, RTCConfiguration
 
